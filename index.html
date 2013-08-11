@@ -1,0 +1,309 @@
+<html>
+<head>
+    <title>Guess the Wikipedia Language</title>
+    <meta name="google" value="notranslate">
+    <script src='jquery-1.9.1.min.js'></script>
+    <script src='wikis-raw.js'></script>
+    <script>
+
+    var total_choices = 4;
+    var min_sample_length = 40;
+
+    /* ******************* */
+
+    var prep_url = function(url, params) {
+        var params_string = ''
+        for (key in params) {
+            params_string += '&' + key + '=' + params[key];
+        }
+        return url + '?' + params_string;
+    };
+
+    var get_random_extract = function(lang_game, cb) {
+        var lid = lang_game['lid']
+        var wp_url = 'http://' + lid + '.wikipedia.org/w/api.php'
+        var params = {
+            'action': 'query',
+            'prop': 'extracts',
+            'generator': 'random',
+            'grnnamespace': 0,
+            'exsentences': 5,
+            'explaintext': true,
+            'format': 'json',
+            'callback': '?'
+        }
+        var api_query_url = prep_url(wp_url, params);
+        $.getJSON(api_query_url, function(data, textStatus, jqXHR) {
+            var ret_pages = data['query']['pages'];
+            for (page_id in ret_pages) {
+                if (ret_pages.hasOwnProperty(page_id)) {
+                    cb(ret_pages[page_id], lang_game, cb);
+                    return;
+                }
+            }
+        });
+    };
+
+    var check_extract = function(data, lang_game, cb) {
+        if (data.extract.length < min_sample_length) {
+            console.log('too short.')
+            get_random_extract(lang_game, cb);
+        } else {
+            lang_game['sample'] = data['extract'];
+            lang_game['title'] = data['title'];
+
+            assemble_interface(lang_game)
+
+        }
+    };
+
+    function shuffle(o) {
+        for(var j, x, i = o.length; i; j = parseInt(Math.random() * i), x = o[--i], o[i] = o[j], o[j] = x);
+        return o;
+    };
+
+    /* interface stuff */
+
+    var solved = false;
+
+    var encourage = function() {
+        var msgs = ['No, not exactly...',
+                    "Oh no! That's not it",
+                    'No, try another',
+                    'Hmm, not that one']
+        var index = Math.floor(Math.random() * msgs.length)
+        return msgs[index]
+    }
+
+    var congradulate = function() {
+        var msgs = [' - Correct. Great job!',
+                    ' - Correct. Way to go!']
+        var index = Math.floor(Math.random() * msgs.length)
+        return msgs[index]
+    }
+
+    var assemble_interface = function(lang_game) {
+
+        $('.article-title').html(lang_game['title'])
+        $('.sample-text').html(lang_game['sample'])
+
+        for (var i = 0; i <= lang_game['choices'].length - 1; i++) {
+            var choice = lang_game['choices'][i];
+            if (choice == lang_game['correct']) {
+                console.log(choice)
+                $('.choices').append('<li class="choice correct"><span class="c">' + choice + '</span> <span class="message"></span></li>');
+            } else {
+                $('.choices').append('<li class="choice"><span class="c">' + choice + '</span> <span class="message"></span></li>');
+            }
+
+        }
+
+        $('li.choice').hover(
+        function() {
+            if (!$(this).hasClass('success') && !solved) {
+                $(this).addClass('choice-over');
+            }
+        },
+        function() {
+            $(this).removeClass('choice-over');
+        })
+        .click(function() {
+            if (!solved) {
+                if ($(this).hasClass('correct')) {
+                    $(this).children('span.message').html(congradulate())
+                    $(this).addClass('success')
+                    $('#lang-facts').html("<p>" + lang_game['correct_info']['description'] + " Learn more about <a href='http://en.wikipedia.org/wiki/" + lang_game['correct_info']['en_article_name'] + "' target='_blank'>" + lang_game['correct_info']['name'] + " language</a>.</p><p>The <a href='http://" + lang_game['correct_info']['shortcode'] + ".wikipedia.org' target='_blank'>" + lang_game['correct_info']['name'] + " Wikipedia</a> has <span class='fact'>" + lang_game['correct_info']['article_count'] + " articles</span> and <span class='fact'>" + lang_game['correct_info']['active_user_count'] + " active users</span>!</p>")
+                    $('#article-facts').html("<p>Read the full article on <a href='http://" + lang_game['correct_info']['shortcode'] + ".wikipedia.org/wiki/" + lang_game['title'] + "' target='_blank'>" + lang_game['title'] + "</a> in " + lang_game['correct_info']['name'] + "!")
+                    $('.load-more').addClass('bigger')
+                    solved = true;
+                } else {
+                    $(this).addClass('choice-selected');
+                    $(this).children('span.message').html(encourage())
+                }
+            }
+        });
+
+    }
+
+    var new_question = function() {
+        var fullDuration = 2500;
+        $('#wrapper').removeClass('sectorwrappertransition').delay(fullDuration*.3).animate({
+            top: "-100%",
+        }, fullDuration*.3, function() {
+            resetLeft();
+            resetContent();
+            $('#option_list li').css("opacity", 1);
+            $('#sectorwrapper').css('top', '100%');
+            $('#sectorwrapper').animate({
+                top: "0%",
+            }, fullDuration*.3, function() {
+                $('#sectorwrapper').addClass('sectorwrappertransition')
+            });
+        });
+
+        correct_wiki = wikis[Math.floor(Math.random() * wikis.length)];
+        console.log(correct_wiki)
+        correct_wiki = {
+            'name': correct_wiki[0],
+            'en_article_name': correct_wiki[1],
+            'shortcode': correct_wiki[2],
+            'article_count': correct_wiki[3],
+            'active_user_count': correct_wiki[4],
+            'depth': correct_wiki[5],
+            'description': correct_wiki[6]
+        }
+
+        var choices = [correct_wiki['name']];
+        for (var i = 0; i < total_choices; i++) {
+            choices.push(wikis[Math.floor(Math.random() * wikis.length)][0]);
+        }
+
+        var lang_game = {
+            'lid': correct_wiki['shortcode'],
+            'correct': correct_wiki['name'],
+            'correct_info': correct_wiki,
+            'choices': shuffle(choices),
+        }
+
+        get_random_extract(lang_game, check_extract);
+    }
+
+    $(function() {
+
+        correct_wiki = wikis[Math.floor(Math.random() * wikis.length)];
+        console.log(correct_wiki)
+        correct_wiki = {
+            'name': correct_wiki[0],
+            'en_article_name': correct_wiki[1],
+            'shortcode': correct_wiki[2],
+            'article_count': correct_wiki[3],
+            'active_user_count': correct_wiki[4],
+            'depth': correct_wiki[5],
+            'description': correct_wiki[6]
+        }
+
+        var choices = [correct_wiki['name']];
+        for (var i = 0; i < total_choices; i++) {
+            choices.push(wikis[Math.floor(Math.random() * wikis.length)][0]);
+        }
+
+        var lang_game = {
+            'lid': correct_wiki['shortcode'],
+            'correct': correct_wiki['name'],
+            'correct_info': correct_wiki,
+            'choices': shuffle(choices),
+        }
+
+        get_random_extract(lang_game, check_extract);
+
+
+    });
+    </script>
+    <style>
+        * {
+            margin: 0;
+        }
+
+        body {
+            font-family: sans-serif;
+        }
+        h1, h2, h3 {
+            padding: .5em;
+            padding-left: 0;
+        }
+        p {
+            line-height: 1.5em;
+            margin-bottom: .5em;
+        }
+        a {
+            color: #306596;
+        }
+        a:hover {
+            color: #cc4731;
+        }
+        #wrapper {
+            margin: auto 2em;
+            overflow: hidden; /* To clear contents */
+            zoom: 1; /* To fix IE6 bugs with floats */
+            position:absolute;
+        }
+        .content {
+            margin: 1em auto 4em auto;
+            max-width: 960px;
+            min-width: 240px;
+            position: relative;
+        }
+        .choices {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            margin-bottom: 2em;
+        }
+        .choice {
+            padding: 1em;
+        }
+        .choice-over {
+            background-color: #CCC;
+            cursor: pointer;
+        }
+        .choice-selected span.c {
+            color: #cc4731;
+            text-decoration: line-through;
+        }
+        .choice-selected span {
+            color: #000;
+            text-decoration: none;
+        }
+        .success {
+            background-color: #eddc4e;
+        }
+        .bigger {
+            font-size: 3em;
+            background-color: #ccc;
+            margin: 1em;
+        }
+        .load-more {
+            text-align: center;
+        }
+        .sample {
+            border: 1px solid #d8e6ec;
+            padding: 2em;
+            position: relative;
+        }
+        .help {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 10em;
+            font-size: .8em;
+        }
+        .article-title {
+            font-style: italic;
+        }
+        .fact {
+            border-bottom: 1px dotted #ccc;
+        }
+        #lang-facts, #article-facts {
+            font-size: 1em;
+            padding: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <div id="wrapper">
+            <div id="sectorwrapper" class="sectorwrappertransition">
+            <h1>Can you identify this language?</h1>
+            <h2><span class="article-title"></span></h2>
+            <p id='article-facts'></p>
+            <p class='sample'><span class='sample-text'></span><span class='help'><a href='/'>Try another question</a></p></p>
+            <p id='lang-facts'></p>
+            <h2>Choices:</h2>
+            <ul class='choices'>
+            </ul>
+            <p class='load-more'><a href='/'>Try another round!</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
